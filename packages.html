@@ -7,23 +7,23 @@
         
         
         
-        <link rel="shortcut icon" href="../img/favicon.ico">
-        <title>Performance - IXWebSocket</title>
-        <link href="../css/bootstrap.min.css" rel="stylesheet">
-        <link href="../css/font-awesome.min.css" rel="stylesheet">
-        <link href="../css/base.css" rel="stylesheet">
-        <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/9.12.0/styles/github.min.css">
+        <link rel="shortcut icon" href="img/favicon.ico">
+        <title>Packages - IXWebSocket</title>
+        <link href="css/bootstrap.min.css" rel="stylesheet">
+        <link href="css/font-awesome.min.css" rel="stylesheet">
+        <link href="css/base.css" rel="stylesheet">
+        <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/10.5.0/styles/github.min.css">
 
-        <script src="../js/jquery-1.10.2.min.js" defer></script>
-        <script src="../js/bootstrap.min.js" defer></script>
-        <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/9.12.0/highlight.min.js"></script>
+        <script src="js/jquery-1.10.2.min.js" defer></script>
+        <script src="js/bootstrap.min.js" defer></script>
+        <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/10.5.0/highlight.min.js"></script>
         <script>hljs.initHighlightingOnLoad();</script> 
     </head>
 
     <body>
         <div class="navbar fixed-top navbar-expand-lg navbar-dark bg-primary">
             <div class="container">
-                <a class="navbar-brand" href="..">IXWebSocket</a>
+                <a class="navbar-brand" href="index.html">IXWebSocket</a>
                 <!-- Expander button -->
                 <button type="button" class="navbar-toggler" data-toggle="collapse" data-target="#navbar-collapse">
                     <span class="navbar-toggler-icon"></span>
@@ -34,31 +34,28 @@
                         <!-- Main navigation -->
                         <ul class="nav navbar-nav">
                             <li class="navitem">
-                                <a href=".." class="nav-link">Home</a>
+                                <a href="index.html" class="nav-link">Home</a>
                             </li>
                             <li class="navitem">
-                                <a href="../CHANGELOG/" class="nav-link">Changelog</a>
+                                <a href="CHANGELOG.html" class="nav-link">Changelog</a>
                             </li>
                             <li class="navitem">
-                                <a href="../build/" class="nav-link">Build</a>
+                                <a href="build.html" class="nav-link">Build</a>
                             </li>
                             <li class="navitem">
-                                <a href="../cobra/" class="nav-link">Cobra</a>
-                            </li>
-                            <li class="navitem">
-                                <a href="../design/" class="nav-link">Design</a>
-                            </li>
-                            <li class="navitem">
-                                <a href="../packages/" class="nav-link">Packages</a>
+                                <a href="design.html" class="nav-link">Design</a>
                             </li>
                             <li class="navitem active">
-                                <a href="./" class="nav-link">Performance</a>
+                                <a href="packages.html" class="nav-link">Packages</a>
                             </li>
                             <li class="navitem">
-                                <a href="../usage/" class="nav-link">Examples</a>
+                                <a href="performance.html" class="nav-link">Performance</a>
                             </li>
                             <li class="navitem">
-                                <a href="../ws/" class="nav-link">Ws</a>
+                                <a href="usage.html" class="nav-link">Examples</a>
+                            </li>
+                            <li class="navitem">
+                                <a href="ws.html" class="nav-link">Ws</a>
                             </li>
                         </ul>
 
@@ -69,12 +66,12 @@
                             </a>
                         </li>
                             <li class="nav-item">
-                                <a rel="prev" href="../packages/" class="nav-link">
+                                <a rel="prev" href="design.html" class="nav-link">
                                     <i class="fa fa-arrow-left"></i> Previous
                                 </a>
                             </li>
                             <li class="nav-item">
-                                <a rel="next" href="../usage/" class="nav-link">
+                                <a rel="next" href="performance.html" class="nav-link">
                                     Next <i class="fa fa-arrow-right"></i>
                                 </a>
                             </li>
@@ -96,7 +93,7 @@
     <div id="toc-collapse" class="navbar-collapse collapse card bg-secondary">
         <ul class="nav flex-column">
             
-            <li class="nav-item" data-level="2"><a href="#websocket-client-performance" class="nav-link">WebSocket Client performance</a>
+            <li class="nav-item" data-level="2"><a href="#vcpkg" class="nav-link">VCPKG</a>
               <ul class="nav flex-column">
               </ul>
             </li>
@@ -105,35 +102,85 @@
 </div></div>
                     <div class="col-md-9" role="main">
 
-<h2 id="websocket-client-performance">WebSocket Client performance</h2>
-<p>We will run a client and a server on the same machine, connecting to localhost. This bench is run on a MacBook Pro from 2015. We can receive over 200,000 (small) messages per second, another way to put it is that it takes 5 micro-second to receive and process one message. This is an indication about the minimal latency to receive messages.</p>
-<h3 id="receiving-messages">Receiving messages</h3>
-<p>By using the push_server ws sub-command, the server will send the same message in a loop to any connected client.</p>
-<pre><code>ws push_server -q --send_msg 'yo'
+<p>Notes on how we can update the different packages for ixwebsocket.</p>
+<h2 id="vcpkg">VCPKG</h2>
+<p>Visit the <a href="https://github.com/machinezone/IXWebSocket/releases">releases</a> page on Github. A tag must have been made first.</p>
+<p>Download the latest entry.</p>
+<pre><code>$ cd /tmp
+/tmp$ curl -s -O -L https://github.com/machinezone/IXWebSocket/archive/v9.1.9.tar.gz
+/tmp$
+/tmp$ openssl sha512 v9.1.9.tar.gz
+SHA512(v9.1.9.tar.gz)= f1fd731b5f6a9ce6d6d10bee22a5d9d9baaa8ea0564d6c4cd7eb91dcb88a45c49b2c7fdb75f8640a3589c1b30cee33ef5df8dcbb55920d013394d1e33ddd3c8e
 </code></pre>
+<p>Now go punch those values in the vcpkg ixwebsocket port config files. Here is what the diff look like.</p>
+<pre><code>vcpkg$ git diff
+diff --git a/ports/ixwebsocket/CONTROL b/ports/ixwebsocket/CONTROL
+index db9c2adc9..4acae5c3f 100644
+--- a/ports/ixwebsocket/CONTROL
++++ b/ports/ixwebsocket/CONTROL
+@@ -1,5 +1,5 @@
+ Source: ixwebsocket
+-Version: 8.0.5
++Version: 9.1.9
+ Build-Depends: zlib
+ Homepage: https://github.com/machinezone/IXWebSocket
+ Description: Lightweight WebSocket Client and Server + HTTP Client and Server
+diff --git a/ports/ixwebsocket/portfile.cmake b/ports/ixwebsocket/portfile.cmake
+index de082aece..68e523a05 100644
+--- a/ports/ixwebsocket/portfile.cmake
++++ b/ports/ixwebsocket/portfile.cmake
+@@ -1,8 +1,8 @@
+ vcpkg_from_github(
+     OUT_SOURCE_PATH SOURCE_PATH
+     REPO machinezone/IXWebSocket
+-    REF v8.0.5
+-    SHA512 9dcc20d9a0629b92c62a68a8bd7c8206f18dbd9e93289b0b687ec13c478ce9ad1f3563b38c399c8277b0d3812cc78ca725786ba1dedbc3445b9bdb9b689e8add
++    REF v9.1.9
++    SHA512 f1fd731b5f6a9ce6d6d10bee22a5d9d9baaa8ea0564d6c4cd7eb91dcb88a45c49b2c7fdb75f8640a3589c1b30cee33ef5df8dcbb55920d013394d1e33ddd3c8e
+ )
+</code></pre>
+<p>You will need a fork of the vcpkg repo to make a pull request.</p>
+<pre><code>git fetch upstream
+git co master
+git reset --hard upstream/master
+git push origin master --force
+</code></pre>
+<p>Make the pull request (I use a new branch to do that).</p>
+<pre><code>vcpkg$ git co -b feature/ixwebsocket_9.1.9
+M   ports/ixwebsocket/CONTROL
+M   ports/ixwebsocket/portfile.cmake
+Switched to a new branch 'feature/ixwebsocket_9.1.9'
+vcpkg$
+vcpkg$
+vcpkg$ git commit -am 'ixwebsocket: update to 9.1.9'
+[feature/ixwebsocket_9.1.9 8587a4881] ixwebsocket: update to 9.1.9
+ 2 files changed, 3 insertions(+), 3 deletions(-)
+vcpkg$
+vcpkg$ git push
+fatal: The current branch feature/ixwebsocket_9.1.9 has no upstream branch.
+To push the current branch and set the remote as upstream, use
 
-<p>By using the echo_client ws sub-command, with the -m (mute or no_send), we will display statistics on how many messages we can receive per second.</p>
-<pre><code>$ ws echo_client -m ws://localhost:8008
-[2020-08-02 12:31:17.284] [info] ws_echo_client: connected
-[2020-08-02 12:31:17.284] [info] Uri: /
-[2020-08-02 12:31:17.284] [info] Headers:
-[2020-08-02 12:31:17.284] [info] Connection: Upgrade
-[2020-08-02 12:31:17.284] [info] Sec-WebSocket-Accept: byy/pMK2d0PtRwExaaiOnXJTQHo=
-[2020-08-02 12:31:17.284] [info] Server: ixwebsocket/10.1.4 macos ssl/SecureTransport zlib 1.2.11
-[2020-08-02 12:31:17.284] [info] Upgrade: websocket
-[2020-08-02 12:31:17.663] [info] messages received: 0 per second 2595307 total
-[2020-08-02 12:31:18.668] [info] messages received: 79679 per second 2674986 total
-[2020-08-02 12:31:19.668] [info] messages received: 207438 per second 2882424 total
-[2020-08-02 12:31:20.673] [info] messages received: 209207 per second 3091631 total
-[2020-08-02 12:31:21.676] [info] messages received: 216056 per second 3307687 total
-[2020-08-02 12:31:22.680] [info] messages received: 214927 per second 3522614 total
-[2020-08-02 12:31:23.684] [info] messages received: 216960 per second 3739574 total
-[2020-08-02 12:31:24.688] [info] messages received: 215232 per second 3954806 total
-[2020-08-02 12:31:25.691] [info] messages received: 212300 per second 4167106 total
-[2020-08-02 12:31:26.694] [info] messages received: 212501 per second 4379607 total
-[2020-08-02 12:31:27.699] [info] messages received: 212330 per second 4591937 total
-[2020-08-02 12:31:28.702] [info] messages received: 216511 per second 4808448 total
-</code></pre></div>
+    git push --set-upstream origin feature/ixwebsocket_9.1.9
+
+vcpkg$ git push --set-upstream origin feature/ixwebsocket_9.1.9
+
+Enumerating objects: 11, done.
+Counting objects: 100% (11/11), done.
+Delta compression using up to 8 threads
+Compressing objects: 100% (6/6), done.
+Writing objects: 100% (6/6), 621 bytes | 621.00 KiB/s, done.
+Total 6 (delta 4), reused 0 (delta 0)
+remote: Resolving deltas: 100% (4/4), completed with 4 local objects.
+remote:
+remote: Create a pull request for 'feature/ixwebsocket_9.1.9' on GitHub by visiting:
+remote:      https://github.com/bsergean/vcpkg/pull/new/feature/ixwebsocket_9.1.9
+remote:
+To https://github.com/bsergean/vcpkg.git
+ * [new branch]          feature/ixwebsocket_9.1.9 -&gt; feature/ixwebsocket_9.1.9
+Branch 'feature/ixwebsocket_9.1.9' set up to track remote branch 'feature/ixwebsocket_9.1.9' from 'origin' by rebasing.
+vcpkg$
+</code></pre>
+<p>Just visit this url, https://github.com/bsergean/vcpkg/pull/new/feature/ixwebsocket_9.1.9, printed on the console, to make the pull request.</p></div>
             </div>
         </div>
 
@@ -142,11 +189,11 @@
             <p>Documentation built with <a href="https://www.mkdocs.org/">MkDocs</a>.</p>
         </footer>
         <script>
-            var base_url = "..",
+            var base_url = ".",
                 shortcuts = {"help": 191, "next": 78, "previous": 80, "search": 83};
         </script>
-        <script src="../js/base.js" defer></script>
-        <script src="../search/main.js" defer></script>
+        <script src="js/base.js" defer></script>
+        <script src="search/main.js" defer></script>
 
         <div class="modal" id="mkdocs_search_modal" tabindex="-1" role="dialog" aria-labelledby="searchModalLabel" aria-hidden="true">
     <div class="modal-dialog modal-lg">
@@ -156,16 +203,13 @@
                 <button type="button" class="close" data-dismiss="modal"><span aria-hidden="true">&times;</span><span class="sr-only">Close</span></button>
             </div>
             <div class="modal-body">
-                <p>
-                    From here you can search these documents. Enter
-                    your search terms below.
-                </p>
+                <p>From here you can search these documents. Enter your search terms below.</p>
                 <form>
                     <div class="form-group">
                         <input type="search" class="form-control" placeholder="Search..." id="mkdocs-search-query" title="Type search term here">
                     </div>
                 </form>
-                <div id="mkdocs-search-results"></div>
+                <div id="mkdocs-search-results" data-no-results-text="No results found"></div>
             </div>
             <div class="modal-footer">
             </div>
