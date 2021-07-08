@@ -600,8 +600,17 @@ namespace ix
         if (ret) return ret;
 
 		std::streampos bodySize = 0;
-        if (verb == kPost || verb == kPut)
+        if (verb == kPost || verb == kPut || verb == kPatch || _forceBody)
         {
+            // Set request compression header
+#ifdef IXWEBSOCKET_USE_ZLIB
+            if (args->compressRequest)
+            {
+                data.ss << "Content-Encoding: gzip"
+                   << "\r\n";
+            }
+#endif
+
             body->seekg(0, std::ios::end);
             bodySize = body->tellg();
             body->seekg(0, std::ios::beg);
@@ -631,11 +640,10 @@ namespace ix
 
 		data.req = data.ss.str();
         std::string errMsg;
-        std::atomic<bool> requestInitCancellation(false);
 
         // Make a cancellation object dealing with connection timeout
         _isCancellationRequested =
-            makeCancellationRequestWithTimeout(args->connectTimeout, requestInitCancellation);
+            makeCancellationRequestWithTimeout(args->connectTimeout, _stop);
 
         bool success = _socket->connect(data.host, data.port, errMsg, _isCancellationRequested);
         if (!success)
@@ -653,8 +661,7 @@ namespace ix
         }
 
         // Make a new cancellation object dealing with transfer timeout
-        _isCancellationRequested =
-            makeCancellationRequestWithTimeout(args->transferTimeout, requestInitCancellation);
+        _isCancellationRequested = makeCancellationRequestWithTimeout(args->transferTimeout, _stop);
 
 		if (args->verbose)
         {
