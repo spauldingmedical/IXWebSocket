@@ -15,6 +15,7 @@ namespace ix
     const char* kTLSCAFileUseSystemDefaults = "SYSTEM";
     const char* kTLSCAFileDisableVerify = "NONE";
     const char* kTLSCiphersUseDefault = "DEFAULT";
+    const char* kTLSInMemoryMarker = "-----BEGIN CERTIFICATE-----";
 
     bool SocketTLSOptions::isValid() const
     {
@@ -61,6 +62,11 @@ namespace ix
     bool SocketTLSOptions::isUsingSystemDefaults() const
     {
         return caFile == kTLSCAFileUseSystemDefaults;
+    }
+
+    bool SocketTLSOptions::isUsingInMemoryCAs() const
+    {
+        return caFile.find(kTLSInMemoryMarker) != std::string::npos;
     }
 
     bool SocketTLSOptions::isPeerVerifyDisabled() const

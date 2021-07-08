@@ -1,12 +1,13 @@
 /*
  *  IXSocketMbedTLS.cpp
- *  Author: Benjamin Sergeant
- *  Copyright (c) 2019 Machine Zone, Inc. All rights reserved.
+ *  Author: Benjamin Sergeant, Max Weisel
+ *  Copyright (c) 2019-2020 Machine Zone, Inc. All rights reserved.
  *
  *  Some code taken from
  *  https://github.com/rottor12/WsClientLib/blob/master/lib/src/WsClientLib.cpp
  *  and mini_client.c example from mbedtls
  */
+#ifdef IXWEBSOCKET_USE_MBED_TLS
 
 #include "IXSocketMbedTLS.h"
 
@@ -14,6 +15,11 @@
 #include "IXSocket.h"
 #include "IXSocketConnect.h"
 #include <string.h>
+
+#ifdef _WIN32
+// For manipulating the certificate store
+#include <wincrypt.h>
+#endif
 
 namespace ix
 {
@@ -40,6 +46,55 @@ namespace ix
         mbedtls_x509_crt_init(&_cacert);
         mbedtls_x509_crt_init(&_cert);
         mbedtls_pk_init(&_pkey);
+    }
+
+    bool SocketMbedTLS::loadSystemCertificates(std::string& errorMsg)
+    {
+#ifdef _WIN32
+        DWORD flags = CERT_STORE_READONLY_FLAG | CERT_STORE_OPEN_EXISTING_FLAG |
+                      CERT_SYSTEM_STORE_CURRENT_USER;
+        HCERTSTORE systemStore = CertOpenStore(CERT_STORE_PROV_SYSTEM, 0, 0, flags, L"Root");
+
+        if (!systemStore)
+        {
+            errorMsg = "CertOpenStore failed with ";
+            errorMsg += std::to_string(GetLastError());
+            return false;
+        }
+
+        PCCERT_CONTEXT certificateIterator = NULL;
+
+        int certificateCount = 0;
+        while (certificateIterator = CertEnumCertificatesInStore(systemStore, certificateIterator))
+        {
+            if (certificateIterator->dwCertEncodingType & X509_ASN_ENCODING)
+            {
+                int ret = mbedtls_x509_crt_parse(&_cacert,
+                                                 certificateIterator->pbCertEncoded,
+                                                 certificateIterator->cbCertEncoded);
+                if (ret == 0)
+                {
+                    ++certificateCount;
+                }
+            }
+        }
+
+        CertFreeCertificateContext(certificateIterator);
+        CertCloseStore(systemStore, 0);
+
+        if (certificateCount == 0)
+        {
+            errorMsg = "No certificates found";
+            return false;
+        }
+
+        return true;
+#else
+        // On macOS we can query the system cert location from the keychain
+        // On Linux we could try to fetch some local files based on the distribution
+        // On Android we could use JNI to get to the system certs
+        return false;
+#endif
     }
 
     bool SocketMbedTLS::init(const std::string& host, bool isClient, std::string& errMsg)
@@ -95,18 +150,36 @@ namespace ix
         }
         else
         {
-            mbedtls_ssl_conf_authmode(&_conf, MBEDTLS_SSL_VERIFY_REQUIRED);
-
             // FIXME: should we call mbedtls_ssl_conf_verify ?
+            mbedtls_ssl_conf_authmode(&_conf, MBEDTLS_SSL_VERIFY_REQUIRED);
 
             if (_tlsOptions.isUsingSystemDefaults())
             {
-                ; // FIXME
+                if (!loadSystemCertificates(errMsg))
+                {
+                    return false;
+                }
             }
-            else if (mbedtls_x509_crt_parse_file(&_cacert, _tlsOptions.caFile.c_str()) < 0)
+            else
             {
-                errMsg = "Cannot parse CA file '" + _tlsOptions.caFile + "'";
-                return false;
+                if (_tlsOptions.isUsingInMemoryCAs())
+                {
+                    const char* buffer = _tlsOptions.caFile.c_str();
+                    size_t bufferSize =
+                        _tlsOptions.caFile.size() + 1; // Needs to include null terminating
+                                                       // character otherwise mbedtls will fail.
+                    if (mbedtls_x509_crt_parse(
+                            &_cacert, (const unsigned char*) buffer, bufferSize) < 0)
+                    {
+                        errMsg = "Cannot parse CA from memory.";
+                        return false;
+                    }
+                }
+                else if (mbedtls_x509_crt_parse_file(&_cacert, _tlsOptions.caFile.c_str()) < 0)
+                {
+                    errMsg = "Cannot parse CA file '" + _tlsOptions.caFile + "'";
+                    return false;
+                }
             }
 
             mbedtls_ssl_conf_ca_chain(&_conf, &_cacert, NULL);
@@ -280,3 +353,5 @@ namespace ix
     }
 
 } // namespace ix
+
+#endif // IXWEBSOCKET_USE_MBED_TLS

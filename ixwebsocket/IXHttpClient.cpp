@@ -6,6 +6,7 @@
 
 #include "IXHttpClient.h"
 
+#include "IXGzipCodec.h"
 #include "IXSocketFactory.h"
 #include "IXUrlParser.h"
 #include "IXUserAgent.h"
@@ -16,19 +17,21 @@
 #include <random>
 #include <sstream>
 #include <vector>
-#include <zlib.h>
 
 namespace ix
 {
+    // https://developer.mozilla.org/en-US/docs/Web/HTTP/Methods
     const std::string HttpClient::kPost = "POST";
     const std::string HttpClient::kGet = "GET";
     const std::string HttpClient::kHead = "HEAD";
-    const std::string HttpClient::kDel = "DEL";
+    const std::string HttpClient::kDelete = "DELETE";
     const std::string HttpClient::kPut = "PUT";
+    const std::string HttpClient::kPatch = "PATCH";
 
     HttpClient::HttpClient(bool async)
         : _async(async)
         , _stop(false)
+        , _forceBody(false)
     {
         if (!_async) return;
 
@@ -47,6 +50,11 @@ namespace ix
     void HttpClient::setTLSOptions(const SocketTLSOptions& tlsOptions)
     {
         _tlsOptions = tlsOptions;
+    }
+
+    void HttpClient::setForceBody(bool value)
+    {
+        _forceBody = value;
     }
 
     HttpRequestArgsPtr HttpClient::createRequest(const std::string& url, const std::string& verb)
@@ -141,7 +149,7 @@ namespace ix
     {
         // We only have one socket connection, so we cannot
         // make multiple requests concurrently.
-        std::lock_guard<std::mutex> lock(_mutex);
+        std::lock_guard<std::recursive_mutex> lock(_mutex);
 
         if (!UrlParser::parse(url, data.protocol, data.host, data.path, data.query, data.port))
         {
@@ -182,11 +190,13 @@ namespace ix
             data.ss << "Host: " << data.host << ":" << data.port << "\r\n";
         }
 
+#ifdef IXWEBSOCKET_USE_ZLIB
         if (args->compress)
         {
             data.ss << "Accept-Encoding: gzip"
-                << "\r\n";
+               << "\r\n";
         }
+#endif
 
         // Append extra headers
         for (auto&& it : args->extraHeaders)
@@ -195,14 +205,14 @@ namespace ix
         }
 
         // Set a default Accept header if none is present
-        if (data.headers.find("Accept") == data.headers.end())
+        if (args->extraHeaders.find("Accept") == args->extraHeaders.end())
         {
             data.ss << "Accept: */*"
                 << "\r\n";
         }
 
         // Set a default User agent if none is present
-        if (data.headers.find("User-Agent") == data.headers.end())
+        if (args->extraHeaders.find("User-Agent") == args->extraHeaders.end())
         {
             data.ss << "User-Agent: " << userAgent() << "\r\n";
         }  
@@ -217,6 +227,7 @@ namespace ix
                                              int redirects)
     {
         data.uploadSize = data.req.size();
+
 
         auto lineResult = _socket->readLine(_isCancellationRequested);
         auto lineValid = lineResult.first;
@@ -288,10 +299,10 @@ namespace ix
                                                       data.downloadSize);
             }
 
-            if (data.redirects >= args->maxRedirects)
+            if (redirects >= args->maxRedirects)
             {
                 std::stringstream ss;
-                ss << "Too many redirects: " << data.redirects;
+                ss << "Too many redirects: " << redirects;
                 return std::make_shared<HttpResponse>(data.code,
                                                       data.description,
                                                       HttpErrorCode::TooManyRedirects,
@@ -304,7 +315,7 @@ namespace ix
 
             // Recurse
             std::string location = data.headers["Location"];
-            return data.redirect();
+            return data.redirect(location);
         }
 
         if (verb == "HEAD")
@@ -428,7 +439,7 @@ namespace ix
                                                   HttpErrorCode::CannotReadBody,
                                                   data.headers,
                                                   data.payload,
-                                                  errorMsg,
+                                                  data.errorMsg,
                                                   data.uploadSize,
                                                   data.downloadSize);
         }
@@ -438,8 +449,9 @@ namespace ix
         // If the content was compressed with gzip, decode it
         if (data.headers["Content-Encoding"] == "gzip")
         {
+#ifdef IXWEBSOCKET_USE_ZLIB
             std::string decompressedPayload;
-            if (!gzipInflate(data.payload, decompressedPayload))
+            if (!gzipDecompress(data.payload, decompressedPayload))
             {
                 std::string errorMsg("Error decompressing payload");
                 return std::make_shared<HttpResponse>(data.code,
@@ -452,6 +464,17 @@ namespace ix
                                                       data.downloadSize);
             }
             data.payload = decompressedPayload;
+#else
+            std::string errorMsg("ixwebsocket was not compiled with gzip support on");
+            return std::make_shared<HttpResponse>(code,
+                                                  data.description,
+                                                  HttpErrorCode::Gzip,
+                                                  data.headers,
+                                                  data.payload,
+                                                  errorMsg,
+                                                  data.uploadSize,
+                                                  data.downloadSize);
+#endif
         }
 
         return std::make_shared<HttpResponse>(data.code,
@@ -471,12 +494,21 @@ namespace ix
                                         int redirects)
     {
         RequestData data;
-        data.redirect = [&] { return request(url, verb, body, args, redirects + 1); };
+        data.redirect = [&](std::string location) { return request(location, verb, body, args, redirects + 1); };
         auto ret = pre_request(data, url, verb, args, redirects);
         if (ret) return ret;
 
-        if (verb == kPost || verb == kPut)
+        if (verb == kPost || verb == kPut || verb == kPatch || _forceBody)
         {
+            // Set request compression header
+#ifdef IXWEBSOCKET_USE_ZLIB
+            if (args->compressRequest)
+            {
+                data.ss << "Content-Encoding: gzip"
+                   << "\r\n";
+            }
+#endif
+
             data.ss << "Content-Length: " << body.size() << "\r\n";
 
             // Set default Content-Type if unspecified
@@ -485,12 +517,12 @@ namespace ix
                 if (args->multipartBoundary.empty())
                 {
                     data.ss << "Content-Type: application/x-www-form-urlencoded"
-                            << "\r\n";
+                       << "\r\n";
                 }
                 else
                 {
-                    data.ss << "Content-Type: multipart/form-data; boundary="
-                            << args->multipartBoundary << "\r\n";
+                    data.ss << "Content-Type: multipart/form-data; boundary=" << args->multipartBoundary
+                       << "\r\n";
                 }
             }
             data.ss << "\r\n";
@@ -501,15 +533,14 @@ namespace ix
             data.ss << "\r\n";
         }
 
-        data.req = data.ss.str();
+        std::string req(data.ss.str());
         std::string errMsg;
-        std::atomic<bool> requestInitCancellation(false);
 
         // Make a cancellation object dealing with connection timeout
-        _isCancellationRequested =
-            makeCancellationRequestWithTimeout(args->connectTimeout, requestInitCancellation);
+        auto isCancellationRequested =
+            makeCancellationRequestWithTimeout(args->connectTimeout, _stop);
 
-        bool success = _socket->connect(data.host, data.port, errMsg, _isCancellationRequested);
+        bool success = _socket->connect(data.host, data.port, errMsg, isCancellationRequested);
         if (!success)
         {
             std::stringstream ss;
@@ -519,29 +550,28 @@ namespace ix
                                                   HttpErrorCode::CannotConnect,
                                                   data.headers,
                                                   data.payload,
-                                                  ss.str(),
+                                                  data.ss.str(),
                                                   data.uploadSize,
                                                   data.downloadSize);
         }
 
         // Make a new cancellation object dealing with transfer timeout
-        _isCancellationRequested =
-            makeCancellationRequestWithTimeout(args->transferTimeout, requestInitCancellation);
+        isCancellationRequested = makeCancellationRequestWithTimeout(args->transferTimeout, _stop);
 
         if (args->verbose)
         {
             std::stringstream ss;
             ss << "Sending " << verb << " request "
                << "to " << data.host << ":" << data.port << std::endl
-               << "request size: " << data.req.size() << " bytes" << std::endl
+               << "request size: " << req.size() << " bytes" << std::endl
                << "=============" << std::endl
-               << data.req << "=============" << std::endl
+               << req << "=============" << std::endl
                << std::endl;
 
             log(ss.str(), args);
         }
 
-        if (!_socket->writeBytes(data.req, _isCancellationRequested))
+        if (!_socket->writeBytes(req, isCancellationRequested))
         {
             std::string errorMsg("Cannot send request");
             return std::make_shared<HttpResponse>(data.code,
@@ -565,7 +595,7 @@ namespace ix
 							int redirects)
     {
         RequestData data;
-        data.redirect = [&] { return request(url, verb, body, args, bufferSize, redirects + 1); };
+        data.redirect = [&](std::string) { return request(url, verb, body, args, bufferSize, redirects + 1); };
         auto ret = pre_request(data, url, verb, args, redirects);
         if (ret) return ret;
 
@@ -702,16 +732,47 @@ namespace ix
         return request(url, kHead, std::string(), args);
     }
 
-    HttpResponsePtr HttpClient::del(const std::string& url, HttpRequestArgsPtr args)
+    HttpResponsePtr HttpClient::Delete(const std::string& url, HttpRequestArgsPtr args)
     {
-        return request(url, kDel, std::string(), args);
+        return request(url, kDelete, std::string(), args);
+    }
+
+    HttpResponsePtr HttpClient::request(const std::string& url,
+                                        const std::string& verb,
+                                        const HttpParameters& httpParameters,
+                                        const HttpFormDataParameters& httpFormDataParameters,
+                                        HttpRequestArgsPtr args)
+    {
+        std::string body;
+
+        if (httpFormDataParameters.empty())
+        {
+            body = serializeHttpParameters(httpParameters);
+        }
+        else
+        {
+            std::string multipartBoundary = generateMultipartBoundary();
+            args->multipartBoundary = multipartBoundary;
+            body = serializeHttpFormDataParameters(
+                multipartBoundary, httpFormDataParameters, httpParameters);
+        }
+
+#ifdef IXWEBSOCKET_USE_ZLIB
+        if (args->compressRequest)
+        {
+            body = gzipCompress(body);
+        }
+#endif
+
+        return request(url, verb, body, args);
     }
 
     HttpResponsePtr HttpClient::post(const std::string& url,
                                      const HttpParameters& httpParameters,
+                                     const HttpFormDataParameters& httpFormDataParameters,
                                      HttpRequestArgsPtr args)
     {
-        return request(url, kPost, serializeHttpParameters(httpParameters), args);
+        return request(url, kPost, httpParameters, httpFormDataParameters, args);
     }
 
     HttpResponsePtr HttpClient::post(const std::string& url,
@@ -723,9 +784,10 @@ namespace ix
 
     HttpResponsePtr HttpClient::put(const std::string& url,
                                     const HttpParameters& httpParameters,
+                                    const HttpFormDataParameters& httpFormDataParameters,
                                     HttpRequestArgsPtr args)
     {
-        return request(url, kPut, serializeHttpParameters(httpParameters), args);
+        return request(url, kPut, httpParameters, httpFormDataParameters, args);
     }
 
     HttpResponsePtr HttpClient::put(const std::string& url,
@@ -733,6 +795,21 @@ namespace ix
                                     const HttpRequestArgsPtr args)
     {
         return request(url, kPut, body, args);
+    }
+
+    HttpResponsePtr HttpClient::patch(const std::string& url,
+                                      const HttpParameters& httpParameters,
+                                      const HttpFormDataParameters& httpFormDataParameters,
+                                      HttpRequestArgsPtr args)
+    {
+        return request(url, kPatch, httpParameters, httpFormDataParameters, args);
+    }
+
+    HttpResponsePtr HttpClient::patch(const std::string& url,
+                                      const std::string& body,
+                                      const HttpRequestArgsPtr args)
+    {
+        return request(url, kPatch, body, args);
     }
 
     std::string HttpClient::urlEncode(const std::string& value)
@@ -824,51 +901,6 @@ namespace ix
         ss << "--" << multipartBoundary << "--\r\n";
 
         return ss.str();
-    }
-
-    bool HttpClient::gzipInflate(const std::string& in, std::string& out)
-    {
-        z_stream inflateState;
-        std::memset(&inflateState, 0, sizeof(inflateState));
-
-        inflateState.zalloc = Z_NULL;
-        inflateState.zfree = Z_NULL;
-        inflateState.opaque = Z_NULL;
-        inflateState.avail_in = 0;
-        inflateState.next_in = Z_NULL;
-
-        if (inflateInit2(&inflateState, 16 + MAX_WBITS) != Z_OK)
-        {
-            return false;
-        }
-
-        inflateState.avail_in = (uInt) in.size();
-        inflateState.next_in = (unsigned char*) (const_cast<char*>(in.data()));
-
-        const int kBufferSize = 1 << 14;
-
-        std::unique_ptr<unsigned char[]> compressBuffer =
-            std::make_unique<unsigned char[]>(kBufferSize);
-
-        do
-        {
-            inflateState.avail_out = (uInt) kBufferSize;
-            inflateState.next_out = compressBuffer.get();
-
-            int ret = inflate(&inflateState, Z_SYNC_FLUSH);
-
-            if (ret == Z_NEED_DICT || ret == Z_DATA_ERROR || ret == Z_MEM_ERROR)
-            {
-                inflateEnd(&inflateState);
-                return false;
-            }
-
-            out.append(reinterpret_cast<char*>(compressBuffer.get()),
-                       kBufferSize - inflateState.avail_out);
-        } while (inflateState.avail_out == 0);
-
-        inflateEnd(&inflateState);
-        return true;
     }
 
     void HttpClient::log(const std::string& msg, HttpRequestArgsPtr args)

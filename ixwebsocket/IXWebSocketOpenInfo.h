@@ -6,6 +6,10 @@
 
 #pragma once
 
+#include "IXWebSocketHttpHeaders.h"
+#include <cstdint>
+#include <string>
+
 namespace ix
 {
     struct WebSocketOpenInfo

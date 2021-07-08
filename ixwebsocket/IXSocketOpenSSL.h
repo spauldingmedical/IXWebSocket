@@ -1,8 +1,9 @@
 /*
  *  IXSocketOpenSSL.h
  *  Author: Benjamin Sergeant, Matt DeBoer
- *  Copyright (c) 2017-2019 Machine Zone, Inc. All rights reserved.
+ *  Copyright (c) 2017-2020 Machine Zone, Inc. All rights reserved.
  */
+#ifdef IXWEBSOCKET_USE_OPEN_SSL
 
 #pragma once
 
@@ -39,6 +40,7 @@ namespace ix
         void openSSLInitialize();
         std::string getSSLError(int ret);
         SSL_CTX* openSSLCreateContext(std::string& errMsg);
+        bool openSSLAddCARootsFromString(const std::string roots);
         bool openSSLClientHandshake(const std::string& hostname,
                                     std::string& errMsg,
                                     const CancellationRequest& isCancellationRequested);
@@ -46,6 +48,9 @@ namespace ix
         bool checkHost(const std::string& host, const char* pattern);
         bool handleTLSOptions(std::string& errMsg);
         bool openSSLServerHandshake(std::string& errMsg);
+
+        // Required for OpenSSL < 1.1
+        static void openSSLLockingCallback(int mode, int type, const char* /*file*/, int /*line*/);
 
         SSL* _ssl_connection;
         SSL_CTX* _ssl_context;
@@ -62,3 +67,5 @@ namespace ix
     };
 
 } // namespace ix
+
+#endif // IXWEBSOCKET_USE_OPEN_SSL

@@ -1,16 +1,19 @@
 /*
  *  IXSocketOpenSSL.cpp
- *  Author: Benjamin Sergeant, Matt DeBoer
- *  Copyright (c) 2017-2019 Machine Zone, Inc. All rights reserved.
+ *  Author: Benjamin Sergeant, Matt DeBoer, Max Weisel
+ *  Copyright (c) 2017-2020 Machine Zone, Inc. All rights reserved.
  *
  *  Adapted from Satori SDK OpenSSL code.
  */
+#ifdef IXWEBSOCKET_USE_OPEN_SSL
 
 #include "IXSocketOpenSSL.h"
 
 #include "IXSocketConnect.h"
+#include "IXUniquePtr.h"
 #include <cassert>
 #include <errno.h>
+#include <vector>
 #ifdef _WIN32
 #include <Shlwapi.h>
 #else
@@ -20,6 +23,62 @@
 #include <openssl/x509v3.h>
 #endif
 #define socketerrno errno
+
+#ifdef _WIN32
+// For manipulating the certificate store
+#include <wincrypt.h>
+#endif
+
+#ifdef _WIN32
+namespace
+{
+    bool loadWindowsSystemCertificates(SSL_CTX* ssl, std::string& errorMsg)
+    {
+        DWORD flags = CERT_STORE_READONLY_FLAG | CERT_STORE_OPEN_EXISTING_FLAG |
+                      CERT_SYSTEM_STORE_CURRENT_USER;
+        HCERTSTORE systemStore = CertOpenStore(CERT_STORE_PROV_SYSTEM, 0, 0, flags, L"Root");
+
+        if (!systemStore)
+        {
+            errorMsg = "CertOpenStore failed with ";
+            errorMsg += std::to_string(GetLastError());
+            return false;
+        }
+
+        PCCERT_CONTEXT certificateIterator = NULL;
+        X509_STORE* opensslStore = SSL_CTX_get_cert_store(ssl);
+
+        int certificateCount = 0;
+        while (certificateIterator = CertEnumCertificatesInStore(systemStore, certificateIterator))
+        {
+            X509* x509 = d2i_X509(NULL,
+                                  (const unsigned char**) &certificateIterator->pbCertEncoded,
+                                  certificateIterator->cbCertEncoded);
+
+            if (x509)
+            {
+                if (X509_STORE_add_cert(opensslStore, x509) == 1)
+                {
+                    ++certificateCount;
+                }
+
+                X509_free(x509);
+            }
+        }
+
+        CertFreeCertificateContext(certificateIterator);
+        CertCloseStore(systemStore, 0);
+
+        if (certificateCount == 0)
+        {
+            errorMsg = "No certificates found";
+            return false;
+        }
+
+        return true;
+    }
+} // namespace
+#endif
 
 namespace ix
 {
@@ -33,6 +92,7 @@ namespace ix
 
     std::atomic<bool> SocketOpenSSL::_openSSLInitializationSuccessful(false);
     std::once_flag SocketOpenSSL::_openSSLInitFlag;
+    std::vector<std::unique_ptr<std::mutex>> openSSLMutexes;
 
     SocketOpenSSL::SocketOpenSSL(const SocketTLSOptions& tlsOptions, int fd)
         : Socket(fd)
@@ -54,12 +114,37 @@ namespace ix
         if (!OPENSSL_init_ssl(OPENSSL_INIT_LOAD_CONFIG, nullptr)) return;
 #else
         (void) OPENSSL_config(nullptr);
+
+        if (CRYPTO_get_locking_callback() == nullptr)
+        {
+            openSSLMutexes.clear();
+            for (int i = 0; i < CRYPTO_num_locks(); ++i)
+            {
+                openSSLMutexes.push_back(ix::make_unique<std::mutex>());
+            }
+            CRYPTO_set_locking_callback(SocketOpenSSL::openSSLLockingCallback);
+        }
 #endif
 
         (void) OpenSSL_add_ssl_algorithms();
         (void) SSL_load_error_strings();
 
         _openSSLInitializationSuccessful = true;
+    }
+
+    void SocketOpenSSL::openSSLLockingCallback(int mode,
+                                               int type,
+                                               const char* /*file*/,
+                                               int /*line*/)
+    {
+        if (mode & CRYPTO_LOCK)
+        {
+            openSSLMutexes[type]->lock();
+        }
+        else
+        {
+            openSSLMutexes[type]->unlock();
+        }
     }
 
     std::string SocketOpenSSL::getSSLError(int ret)
@@ -141,6 +226,66 @@ namespace ix
             SSL_CTX_set_options(ctx, options);
         }
         return ctx;
+    }
+
+    bool SocketOpenSSL::openSSLAddCARootsFromString(const std::string roots)
+    {
+        // Create certificate store
+        X509_STORE* certificate_store = SSL_CTX_get_cert_store(_ssl_context);
+        if (certificate_store == nullptr) return false;
+
+        // Configure to allow intermediate certs
+        X509_STORE_set_flags(certificate_store,
+                             X509_V_FLAG_TRUSTED_FIRST | X509_V_FLAG_PARTIAL_CHAIN);
+
+        // Create a new buffer and populate it with the roots
+        BIO* buffer = BIO_new_mem_buf((void*) roots.c_str(), static_cast<int>(roots.length()));
+        if (buffer == nullptr) return false;
+
+        // Read each root in the buffer and add to the certificate store
+        bool success = true;
+        size_t number_of_roots = 0;
+
+        while (true)
+        {
+            // Read the next root in the buffer
+            X509* root = PEM_read_bio_X509_AUX(buffer, nullptr, nullptr, (void*) "");
+            if (root == nullptr)
+            {
+                // No more certs left in the buffer, we're done.
+                ERR_clear_error();
+                break;
+            }
+
+            // Try adding the root to the certificate store
+            ERR_clear_error();
+            if (!X509_STORE_add_cert(certificate_store, root))
+            {
+                // Failed to add. If the error is unrelated to the x509 lib or the cert already
+                // exists, we're safe to continue.
+                unsigned long error = ERR_get_error();
+                if (ERR_GET_LIB(error) != ERR_LIB_X509 ||
+                    ERR_GET_REASON(error) != X509_R_CERT_ALREADY_IN_HASH_TABLE)
+                {
+                    // Failed. Clean up and bail.
+                    success = false;
+                    X509_free(root);
+                    break;
+                }
+            }
+
+            // Clean up and loop
+            X509_free(root);
+            number_of_roots++;
+        }
+
+        // Clean up buffer
+        BIO_free(buffer);
+
+        // Make sure we loaded at least one certificate.
+        if (number_of_roots == 0) success = false;
+
+        return success;
     }
 
     /**
@@ -374,6 +519,12 @@ namespace ix
         {
             if (_tlsOptions.isUsingSystemDefaults())
             {
+#ifdef _WIN32
+                if (!loadWindowsSystemCertificates(_ssl_context, errMsg))
+                {
+                    return false;
+                }
+#else
                 if (SSL_CTX_set_default_verify_paths(_ssl_context) == 0)
                 {
                     auto sslErr = ERR_get_error();
@@ -381,15 +532,27 @@ namespace ix
                     errMsg += ERR_error_string(sslErr, nullptr);
                     return false;
                 }
+#endif
             }
-            else if (SSL_CTX_load_verify_locations(
-                         _ssl_context, _tlsOptions.caFile.c_str(), NULL) != 1)
+            else
             {
-                auto sslErr = ERR_get_error();
-                errMsg = "OpenSSL failed - SSL_CTX_load_verify_locations(\"" + _tlsOptions.caFile +
-                         "\") failed: ";
-                errMsg += ERR_error_string(sslErr, nullptr);
-                return false;
+                if (_tlsOptions.isUsingInMemoryCAs())
+                {
+                    // Load from memory
+                    openSSLAddCARootsFromString(_tlsOptions.caFile);
+                }
+                else
+                {
+                    if (SSL_CTX_load_verify_locations(
+                            _ssl_context, _tlsOptions.caFile.c_str(), NULL) != 1)
+                    {
+                        auto sslErr = ERR_get_error();
+                        errMsg = "OpenSSL failed - SSL_CTX_load_verify_locations(\"" +
+                                 _tlsOptions.caFile + "\") failed: ";
+                        errMsg += ERR_error_string(sslErr, nullptr);
+                        return false;
+                    }
+                }
             }
 
             SSL_CTX_set_verify(_ssl_context,
@@ -505,25 +668,34 @@ namespace ix
                 }
                 else
                 {
-                    const char* root_ca_file = _tlsOptions.caFile.c_str();
-                    STACK_OF(X509_NAME) * rootCAs;
-                    rootCAs = SSL_load_client_CA_file(root_ca_file);
-                    if (rootCAs == NULL)
+                    if (_tlsOptions.isUsingInMemoryCAs())
                     {
-                        auto sslErr = ERR_get_error();
-                        errMsg = "OpenSSL failed - SSL_load_client_CA_file('" + _tlsOptions.caFile +
-                                 "') failed: ";
-                        errMsg += ERR_error_string(sslErr, nullptr);
+                        // Load from memory
+                        openSSLAddCARootsFromString(_tlsOptions.caFile);
                     }
                     else
                     {
-                        SSL_CTX_set_client_CA_list(_ssl_context, rootCAs);
-                        if (SSL_CTX_load_verify_locations(_ssl_context, root_ca_file, nullptr) != 1)
+                        const char* root_ca_file = _tlsOptions.caFile.c_str();
+                        STACK_OF(X509_NAME) * rootCAs;
+                        rootCAs = SSL_load_client_CA_file(root_ca_file);
+                        if (rootCAs == NULL)
                         {
                             auto sslErr = ERR_get_error();
-                            errMsg = "OpenSSL failed - SSL_CTX_load_verify_locations(\"" +
-                                     _tlsOptions.caFile + "\") failed: ";
+                            errMsg = "OpenSSL failed - SSL_load_client_CA_file('" +
+                                     _tlsOptions.caFile + "') failed: ";
                             errMsg += ERR_error_string(sslErr, nullptr);
+                        }
+                        else
+                        {
+                            SSL_CTX_set_client_CA_list(_ssl_context, rootCAs);
+                            if (SSL_CTX_load_verify_locations(
+                                    _ssl_context, root_ca_file, nullptr) != 1)
+                            {
+                                auto sslErr = ERR_get_error();
+                                errMsg = "OpenSSL failed - SSL_CTX_load_verify_locations(\"" +
+                                         _tlsOptions.caFile + "\") failed: ";
+                                errMsg += ERR_error_string(sslErr, nullptr);
+                            }
                         }
                     }
                 }
@@ -722,3 +894,5 @@ namespace ix
     }
 
 } // namespace ix
+
+#endif // IXWEBSOCKET_USE_OPEN_SSL
