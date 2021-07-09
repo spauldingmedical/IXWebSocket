@@ -180,8 +180,10 @@ if (USE_TLS)
       # set(CMAKE_INCLUDE_PATH ${CMAKE_INCLUDE_PATH} /opt/local/include/openssl-1.0)
     endif()
 
-    # Use OPENSSL_ROOT_DIR CMake variable if you need to use your own openssl
-    find_package(OpenSSL REQUIRED) 
+    # This OPENSSL_FOUND check is to help find a cmake manually configured OpenSSL
+    if (NOT OPENSSL_FOUND)
+      find_package(OpenSSL REQUIRED)
+    endif()
     message(STATUS "OpenSSL: " ${OPENSSL_VERSION})
 
     add_definitions(${OPENSSL_DEFINITIONS})
