@@ -175,7 +175,7 @@ namespace ix
         // Build request string
         data.ss << verb << " " << data.path << " HTTP/1.1\r\n";
 
-        if (data.port == 80 || (tls && data.port == 433))
+        if (data.port == 80 || (tls && data.port == 443))
         {
             data.ss << "Host: " << data.host << "\r\n";
         } else {
