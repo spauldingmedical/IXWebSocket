@@ -187,13 +187,13 @@ if (USE_TLS)
     message(STATUS "OpenSSL: " ${OPENSSL_VERSION})
 
     add_definitions(${OPENSSL_DEFINITIONS})
-    target_include_directories(ixwebsocket PUBLIC ${OPENSSL_INCLUDE_DIR})
+    target_include_directories(ixwebsocket PUBLIC $<BUILD_INTERFACE:${OPENSSL_INCLUDE_DIR}>)
     target_link_libraries(ixwebsocket ${OPENSSL_LIBRARIES})
   elseif (USE_MBED_TLS)
     message(STATUS "TLS configured to use mbedtls")
 
     find_package(MbedTLS REQUIRED)
-    target_include_directories(ixwebsocket PUBLIC ${MBEDTLS_INCLUDE_DIRS})
+    target_include_directories(ixwebsocket PUBLIC $<BUILD_INTERFACE:${MBEDTLS_INCLUDE_DIRS}>)
     target_link_libraries(ixwebsocket ${MBEDTLS_LIBRARIES})
   elseif (USE_SECURE_TRANSPORT)
     message(STATUS "TLS configured to use secure transport")
@@ -251,16 +251,19 @@ target_include_directories(ixwebsocket PUBLIC
 
 set_target_properties(ixwebsocket PROPERTIES PUBLIC_HEADER "${IXWEBSOCKET_HEADERS}")
 
-install(TARGETS ixwebsocket
-        EXPORT ixwebsocket
-        ARCHIVE DESTINATION lib
-        PUBLIC_HEADER DESTINATION include/ixwebsocket/
-)
-
-install(EXPORT ixwebsocket
-        FILE ixwebsocket-config.cmake
-        NAMESPACE ixwebsocket::
-        DESTINATION lib/cmake/ixwebsocket)
+option(IXWEBSOCKET_INSTALL "Install IXWebSocket" TRUE)
+if (IXWEBSOCKET_INSTALL)
+  install(TARGETS ixwebsocket
+          EXPORT ixwebsocket
+          ARCHIVE DESTINATION lib
+          PUBLIC_HEADER DESTINATION include/ixwebsocket/
+  )
+  
+  install(EXPORT ixwebsocket
+          FILE ixwebsocket-config.cmake
+          NAMESPACE ixwebsocket::
+          DESTINATION lib/cmake/ixwebsocket)
+endif()
 
 if (USE_WS OR USE_TEST)
   include(FetchContent)
