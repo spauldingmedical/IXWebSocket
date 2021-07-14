@@ -204,8 +204,10 @@ endif()
 option(USE_ZLIB "Enable zlib support" TRUE)
 
 if (USE_ZLIB)
-  # Use ZLIB_ROOT CMake variable if you need to use your own zlib
-  find_package(ZLIB REQUIRED)
+  # This ZLIB_FOUND check is to help find a cmake manually configured zlib
+  if (NOT ZLIB_FOUND)
+    find_package(ZLIB REQUIRED)
+  endif()
   include_directories(${ZLIB_INCLUDE_DIRS})
   target_link_libraries(ixwebsocket ${ZLIB_LIBRARIES})
 
