@@ -94,7 +94,7 @@ namespace ix
     }
 
     std::tuple<bool, std::string, HttpRequestPtr> Http::parseRequest(
-        std::unique_ptr<Socket>& socket, int timeoutSecs)
+        Socket *socket, int timeoutSecs)
     {
         HttpRequestPtr httpRequest;
 

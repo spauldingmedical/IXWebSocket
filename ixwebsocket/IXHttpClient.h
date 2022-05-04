@@ -20,6 +20,8 @@
 #include <queue>
 #include <sstream>
 #include <thread>
+#include <optional>
+#include <utility>
 
 namespace ix
 {
@@ -140,6 +142,7 @@ namespace ix
 									 const std::string& url,
                                      const std::string& verb,
                                      HttpRequestArgsPtr args,
+                                     std::pair<std::optional<std::reference_wrapper<const std::string>>, std::optional<std::istream *>> body,
                                      int redirects = 0);
 
 
@@ -153,7 +156,7 @@ namespace ix
         std::atomic<bool> _stop;
         std::thread _thread;
 
-        std::unique_ptr<Socket> _socket;
+        Socket* _socket = nullptr;
         std::recursive_mutex _mutex; // to protect accessing the _socket (only one socket per
                                      // client) the mutex needs to be recursive as this function
                                      // might be called recursively to follow HTTP redirections
@@ -164,5 +167,8 @@ namespace ix
 
         CancellationRequest _isCancellationRequested;
         std::atomic<bool> _requestInitCancellation;
+
+        static std::map<std::string, std::pair<bool, std::unique_ptr<ix::Socket>>> socketPool;
+        bool reconnect = false;
     };
 } // namespace ix

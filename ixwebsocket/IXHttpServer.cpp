@@ -83,7 +83,7 @@ namespace ix
     {
         _connectedClientsCount++;
 
-        auto ret = Http::parseRequest(socket, _timeoutSecs);
+        auto ret = Http::parseRequest(socket.get(), _timeoutSecs);
         // FIXME: handle errors in parseRequest
 
         if (std::get<0>(ret))

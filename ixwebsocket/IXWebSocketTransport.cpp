@@ -133,7 +133,7 @@ namespace ix
             }
 
             WebSocketHandshake webSocketHandshake(_requestInitCancellation,
-                                                  _socket,
+                                                  _socket.get(),
                                                   _perMessageDeflate,
                                                   _perMessageDeflateOptions,
                                                   _enablePerMessageDeflate);
@@ -182,7 +182,7 @@ namespace ix
         _perMessageDeflate = ix::make_unique<WebSocketPerMessageDeflate>();
 
         WebSocketHandshake webSocketHandshake(_requestInitCancellation,
-                                              _socket,
+                                              _socket.get(),
                                               _perMessageDeflate,
                                               _perMessageDeflateOptions,
                                               _enablePerMessageDeflate);

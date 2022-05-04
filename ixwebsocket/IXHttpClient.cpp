@@ -18,6 +18,8 @@
 #include <sstream>
 #include <vector>
 
+#include <iostream>
+
 namespace ix
 {
     // https://developer.mozilla.org/en-US/docs/Web/HTTP/Methods
@@ -27,6 +29,8 @@ namespace ix
     const std::string HttpClient::kDelete = "DELETE";
     const std::string HttpClient::kPut = "PUT";
     const std::string HttpClient::kPatch = "PATCH";
+
+    std::map<std::string, std::pair<bool, std::unique_ptr<ix::Socket>>> HttpClient::socketPool;
 
     HttpClient::HttpClient(bool async)
         : _async(async)
@@ -166,7 +170,27 @@ namespace ix
         }
 
         bool tls = data.protocol == "https";
-        _socket = createSocket(tls, -1, data.errorMsg, _tlsOptions);
+
+        auto iter = socketPool.find(data.host);
+        if ((!_socket && iter == socketPool.end()) || reconnect)
+        {
+            if (reconnect)
+            {
+                iter->second.second->close();
+                iter->second.first = false;
+               // socketPool.erase(iter);
+            }
+            else
+            {
+                socketPool[data.host] =
+                    std::make_pair(false, createSocket(tls, -1, data.errorMsg, _tlsOptions));
+                _socket = socketPool.at(data.host).second.get();
+            }
+        }
+        else
+        {
+            _socket = iter->second.second.get();
+        }
 
         if (!_socket)
         {
@@ -224,6 +248,8 @@ namespace ix
                                              const std::string& url,
                                              const std::string& verb,
                                              HttpRequestArgsPtr args,
+                                             std::pair<std::optional<std::reference_wrapper<const std::string>>,
+                                             std::optional<std::istream*>> body,
                                              int redirects)
     {
         data.uploadSize = data.req.size();
@@ -235,15 +261,34 @@ namespace ix
 
         if (!lineValid)
         {
-            std::string errorMsg("Cannot retrieve status line");
-            return std::make_shared<HttpResponse>(data.code,
-                                                  data.description,
-                                                  HttpErrorCode::CannotReadStatusLine,
-                                                  data.headers,
-                                                  data.payload,
-                                                  errorMsg,
-                                                  data.uploadSize,
-                                                  data.downloadSize);
+            if (reconnect)
+            {
+                std::string errorMsg("Cannot retrieve status line");
+                return std::make_shared<HttpResponse>(data.code,
+                                                      data.description,
+                                                      HttpErrorCode::CannotReadStatusLine,
+                                                      data.headers,
+                                                      data.payload,
+                                                      errorMsg,
+                                                      data.uploadSize,
+                                                      data.downloadSize);
+            }
+            else
+            {
+                reconnect = true;
+                if (body.first)
+                    return request(url, verb, *body.first, args, redirects);
+                if (body.second)
+                {
+                    body.second.value()->clear();
+                    body.second.value()->seekg(0, std::ios::beg);
+                    return request(url, verb, *body.second, args, redirects);
+                }
+            }
+        }
+        else
+        {
+            reconnect = false;
         }
 
         if (args->verbose)
@@ -540,7 +585,8 @@ namespace ix
         auto isCancellationRequested =
             makeCancellationRequestWithTimeout(args->connectTimeout, _stop);
 
-        bool success = _socket->connect(data.host, data.port, errMsg, isCancellationRequested);
+        bool success = socketPool.at(data.host).first ? true : _socket->connect(data.host, data.port, errMsg, isCancellationRequested);
+        socketPool.at(data.host).first = success;
         if (!success)
         {
             std::stringstream ss;
@@ -584,7 +630,7 @@ namespace ix
                                                   data.downloadSize);
         }
 
-        return post_request(data, url, verb, args, redirects);
+        return post_request(data, url, verb, args, {body, std::nullopt}, redirects);
     }
 
 	HttpResponsePtr HttpClient::request(const std::string& url,
@@ -645,7 +691,11 @@ namespace ix
         _isCancellationRequested =
             makeCancellationRequestWithTimeout(args->connectTimeout, _stop);
 
-        bool success = _socket->connect(data.host, data.port, errMsg, _isCancellationRequested);
+        bool success =
+            socketPool.at(data.host).first
+                ? true
+                : _socket->connect(data.host, data.port, errMsg, _isCancellationRequested);
+        socketPool.at(data.host).first = success;
         if (!success)
         {
             std::stringstream ss;
@@ -718,7 +768,7 @@ namespace ix
         }
         // Don't report response progress
         args->onProgressCallback = nullptr;
-        return post_request(data, url, verb, args, redirects);
+        return post_request(data, url, verb, args, {std::nullopt, body}, redirects);
 	}
 
      void HttpClient::cancel()

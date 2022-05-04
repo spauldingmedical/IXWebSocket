@@ -8,6 +8,7 @@
 
 #include "IXProgressCallback.h"
 #include "IXWebSocketHttpHeaders.h"
+#include "IXSocket.h"
 #include <tuple>
 #include <unordered_map>
 
@@ -130,7 +131,7 @@ namespace ix
     {
     public:
         static std::tuple<bool, std::string, HttpRequestPtr> parseRequest(
-            std::unique_ptr<Socket>& socket, int timeoutSecs);
+            Socket *socket, int timeoutSecs);
         static bool sendResponse(HttpResponsePtr response, std::unique_ptr<Socket>& socket);
 
         static std::pair<std::string, int> parseStatusLine(const std::string& line);

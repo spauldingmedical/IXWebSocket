@@ -22,7 +22,7 @@ namespace ix
 {
     WebSocketHandshake::WebSocketHandshake(
         std::atomic<bool>& requestInitCancellation,
-        std::unique_ptr<Socket>& socket,
+        Socket *socket,
         WebSocketPerMessageDeflatePtr& perMessageDeflate,
         WebSocketPerMessageDeflateOptions& perMessageDeflateOptions,
         std::atomic<bool>& enablePerMessageDeflate)

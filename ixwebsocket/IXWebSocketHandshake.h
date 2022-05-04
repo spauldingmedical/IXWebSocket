@@ -23,7 +23,7 @@ namespace ix
     {
     public:
         WebSocketHandshake(std::atomic<bool>& requestInitCancellation,
-                           std::unique_ptr<Socket>& _socket,
+                           Socket *_socket,
                            WebSocketPerMessageDeflatePtr& perMessageDeflate,
                            WebSocketPerMessageDeflateOptions& perMessageDeflateOptions,
                            std::atomic<bool>& enablePerMessageDeflate);
@@ -46,7 +46,7 @@ namespace ix
         bool insensitiveStringCompare(const std::string& a, const std::string& b);
 
         std::atomic<bool>& _requestInitCancellation;
-        std::unique_ptr<Socket>& _socket;
+        Socket *_socket;
         WebSocketPerMessageDeflatePtr& _perMessageDeflate;
         WebSocketPerMessageDeflateOptions& _perMessageDeflateOptions;
         std::atomic<bool>& _enablePerMessageDeflate;

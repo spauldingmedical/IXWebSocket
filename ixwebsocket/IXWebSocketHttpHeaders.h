@@ -19,5 +19,5 @@ namespace ix
     using WebSocketHttpHeaders = std::map<std::string, std::string, CaseInsensitiveLess>;
 
     std::pair<bool, WebSocketHttpHeaders> parseHttpHeaders(
-        std::unique_ptr<Socket>& socket, const CancellationRequest& isCancellationRequested);
+        Socket *socket, const CancellationRequest& isCancellationRequested);
 } // namespace ix
