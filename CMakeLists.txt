@@ -252,6 +252,7 @@ target_include_directories(ixwebsocket PUBLIC
 )
 
 set_target_properties(ixwebsocket PROPERTIES PUBLIC_HEADER "${IXWEBSOCKET_HEADERS}")
+target_compile_features(ixwebsocket PUBLIC c_std_11 cxx_std_17)
 
 option(IXWEBSOCKET_INSTALL "Install IXWebSocket" TRUE)
 if (IXWEBSOCKET_INSTALL)
