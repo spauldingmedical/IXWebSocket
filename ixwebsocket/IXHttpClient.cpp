@@ -171,7 +171,14 @@ namespace ix
 
         bool tls = data.protocol == "https";
 
-        auto iter = socketPool.find(data.host);
+        if (threadId.empty())
+        {
+            std::stringstream stream;
+            stream << std::this_thread::get_id();
+            threadId = stream.str();
+        }
+
+        auto iter = socketPool.find(data.host + threadId);
         if ((!_socket && iter == socketPool.end()) || reconnect)
         {
             if (reconnect)
@@ -182,9 +189,9 @@ namespace ix
             }
             else
             {
-                socketPool[data.host] =
+                socketPool[data.host + threadId] =
                     std::make_pair(false, createSocket(tls, -1, data.errorMsg, _tlsOptions));
-                _socket = socketPool.at(data.host).second.get();
+                _socket = socketPool.at(data.host + threadId).second.get();
             }
         }
         else
@@ -585,8 +592,8 @@ namespace ix
         auto isCancellationRequested =
             makeCancellationRequestWithTimeout(args->connectTimeout, _stop);
 
-        bool success = socketPool.at(data.host).first ? true : _socket->connect(data.host, data.port, errMsg, isCancellationRequested);
-        socketPool.at(data.host).first = success;
+        bool success = socketPool.at(data.host + threadId).first ? true : _socket->connect(data.host, data.port, errMsg, isCancellationRequested);
+        socketPool.at(data.host + threadId).first = success;
         if (!success)
         {
             std::stringstream ss;
@@ -692,10 +699,10 @@ namespace ix
             makeCancellationRequestWithTimeout(args->connectTimeout, _stop);
 
         bool success =
-            socketPool.at(data.host).first
+            socketPool.at(data.host + threadId).first
                 ? true
                 : _socket->connect(data.host, data.port, errMsg, _isCancellationRequested);
-        socketPool.at(data.host).first = success;
+        socketPool.at(data.host + threadId).first = success;
         if (!success)
         {
             std::stringstream ss;

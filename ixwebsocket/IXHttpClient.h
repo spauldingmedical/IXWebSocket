@@ -170,5 +170,6 @@ namespace ix
 
         static std::map<std::string, std::pair<bool, std::unique_ptr<ix::Socket>>> socketPool;
         bool reconnect = false;
+        std::string threadId;
     };
 } // namespace ix
