@@ -626,15 +626,27 @@ namespace ix
 
         if (!_socket->writeBytes(req, isCancellationRequested))
         {
-            std::string errorMsg("Cannot send request");
-            return std::make_shared<HttpResponse>(data.code,
-                                                  data.description,
-                                                  HttpErrorCode::SendError,
-                                                  data.headers,
-                                                  data.payload,
-                                                  errorMsg,
-                                                  data.uploadSize,
-                                                  data.downloadSize);
+            if (reconnect)
+            {
+                std::string errorMsg("Cannot send request");
+                return std::make_shared<HttpResponse>(data.code,
+                                                      data.description,
+                                                      HttpErrorCode::SendError,
+                                                      data.headers,
+                                                      data.payload,
+                                                      errorMsg,
+                                                      data.uploadSize,
+                                                      data.downloadSize);
+            }
+            else
+            {
+                reconnect = true;
+                return request(url, verb, body, args, redirects);
+            }
+        }
+        else
+        {
+            reconnect = false;
         }
 
         return post_request(data, url, verb, args, {body, std::nullopt}, redirects);
