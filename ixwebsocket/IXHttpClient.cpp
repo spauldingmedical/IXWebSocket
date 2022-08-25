@@ -1012,4 +1012,14 @@ namespace ix
 
         return str;
     }
+
+    void HttpClient::closeSockets()
+    {
+        std::unique_lock lock(poolMutex);
+        for (auto& socket : socketPool)
+        {
+            socket.second.first = false;
+            socket.second.second->close();
+        }
+    }
 } // namespace ix
