@@ -105,6 +105,8 @@ namespace ix
 
         std::string urlEncode(const std::string& value);
 
+        static void closeSockets();
+
         const static std::string kPost;
         const static std::string kGet;
         const static std::string kHead;
@@ -169,6 +171,7 @@ namespace ix
         std::atomic<bool> _requestInitCancellation;
 
         static std::map<std::string, std::pair<bool, std::unique_ptr<ix::Socket>>> socketPool;
+        static std::mutex poolMutex;
         bool reconnect = false;
         std::string threadId;
     };

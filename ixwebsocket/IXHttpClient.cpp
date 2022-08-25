@@ -31,6 +31,7 @@ namespace ix
     const std::string HttpClient::kPatch = "PATCH";
 
     std::map<std::string, std::pair<bool, std::unique_ptr<ix::Socket>>> HttpClient::socketPool;
+    std::mutex HttpClient::poolMutex;
 
     HttpClient::HttpClient(bool async)
         : _async(async)
@@ -178,25 +179,28 @@ namespace ix
             threadId = stream.str();
         }
 
-        auto iter = socketPool.find(data.host + threadId);
-        if ((!_socket && iter == socketPool.end()) || reconnect)
         {
-            if (reconnect)
+            std::unique_lock lock(poolMutex);
+            auto iter = socketPool.find(data.host + threadId);
+            if ((!_socket && iter == socketPool.end()) || reconnect)
             {
-                iter->second.second->close();
-                iter->second.first = false;
-               // socketPool.erase(iter);
+                if (reconnect)
+                {
+                    iter->second.second->close();
+                    iter->second.first = false;
+                    // socketPool.erase(iter);
+                }
+                else
+                {
+                    socketPool[data.host + threadId] =
+                        std::make_pair(false, createSocket(tls, -1, data.errorMsg, _tlsOptions));
+                    _socket = socketPool.at(data.host + threadId).second.get();
+                }
             }
             else
             {
-                socketPool[data.host + threadId] =
-                    std::make_pair(false, createSocket(tls, -1, data.errorMsg, _tlsOptions));
-                _socket = socketPool.at(data.host + threadId).second.get();
+                _socket = iter->second.second.get();
             }
-        }
-        else
-        {
-            _socket = iter->second.second.get();
         }
 
         if (!_socket)
@@ -592,8 +596,14 @@ namespace ix
         auto isCancellationRequested =
             makeCancellationRequestWithTimeout(args->connectTimeout, _stop);
 
-        bool success = socketPool.at(data.host + threadId).first ? true : _socket->connect(data.host, data.port, errMsg, isCancellationRequested);
-        socketPool.at(data.host + threadId).first = success;
+        bool success = false;
+        {
+            std::unique_lock lock(poolMutex);
+            success = socketPool.at(data.host + threadId).first
+                          ? true
+                          : _socket->connect(data.host, data.port, errMsg, isCancellationRequested);
+            socketPool.at(data.host + threadId).first = success;
+        }
         if (!success)
         {
             std::stringstream ss;
@@ -710,11 +720,15 @@ namespace ix
         _isCancellationRequested =
             makeCancellationRequestWithTimeout(args->connectTimeout, _stop);
 
-        bool success =
-            socketPool.at(data.host + threadId).first
-                ? true
-                : _socket->connect(data.host, data.port, errMsg, _isCancellationRequested);
-        socketPool.at(data.host + threadId).first = success;
+        bool success = false;
+        {
+            std::unique_lock lock(poolMutex);
+            success =
+                socketPool.at(data.host + threadId).first
+                    ? true
+                    : _socket->connect(data.host, data.port, errMsg, _isCancellationRequested);
+            socketPool.at(data.host + threadId).first = success;
+        }
         if (!success)
         {
             std::stringstream ss;
