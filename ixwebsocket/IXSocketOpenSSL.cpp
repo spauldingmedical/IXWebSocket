@@ -82,6 +82,7 @@ namespace
 
 namespace ix
 {
+#ifndef __EMSCRIPTEN__
     const std::string kDefaultCiphers =
         "ECDHE-ECDSA-AES128-GCM-SHA256 ECDHE-ECDSA-AES256-GCM-SHA384 ECDHE-ECDSA-AES128-SHA "
         "ECDHE-ECDSA-AES256-SHA ECDHE-ECDSA-AES128-SHA256 ECDHE-ECDSA-AES256-SHA384 "
@@ -89,6 +90,16 @@ namespace ix
         "ECDHE-RSA-AES256-SHA ECDHE-RSA-AES128-SHA256 ECDHE-RSA-AES256-SHA384 "
         "DHE-RSA-AES128-GCM-SHA256 DHE-RSA-AES256-GCM-SHA384 DHE-RSA-AES128-SHA "
         "DHE-RSA-AES256-SHA DHE-RSA-AES128-SHA256 DHE-RSA-AES256-SHA256 AES128-SHA";
+#else
+    // OpenSSL, when built with emscripten, does not properly support
+    // elliptic curves. Functionality APPEARS fine, but the math to
+    // determine if a point is on the curve fails. Is this because
+    // we have to compile with the "no-asm" option? I know a lot of
+    // the BN_* functions have assembly versions.
+    const std::string kDefaultCiphers =
+        "DHE-RSA-AES128-GCM-SHA256 DHE-RSA-AES256-GCM-SHA384 DHE-RSA-AES128-SHA "
+        "DHE-RSA-AES256-SHA DHE-RSA-AES128-SHA256 DHE-RSA-AES256-SHA256 AES128-SHA";
+#endif
 
     std::atomic<bool> SocketOpenSSL::_openSSLInitializationSuccessful(false);
     std::once_flag SocketOpenSSL::_openSSLInitFlag;

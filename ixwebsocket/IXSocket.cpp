@@ -47,6 +47,15 @@ namespace ix
                                 int sockfd,
                                 const SelectInterruptPtr& selectInterrupt)
     {
+        // Emscripten does not proxy poll() due
+        // to blocking calls not being allowed
+        // by the browser.
+        //
+        // Naive solution for now: just say
+        // we're all good to go.
+#ifdef __EMSCRIPTEN__
+        return PollResultType::ReadyForWrite;
+#endif
         //
         // We used to use ::select to poll but on Android 9 we get large fds out of
         // ::connect which crash in FD_SET as they are larger than FD_SETSIZE. Switching

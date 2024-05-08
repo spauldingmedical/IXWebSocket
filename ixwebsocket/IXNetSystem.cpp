@@ -6,6 +6,15 @@
 
 #include "IXNetSystem.h"
 
+#ifdef __EMSCRIPTEN__
+#include <emscripten.h>
+#include <emscripten/websocket.h>
+#include <emscripten/threading.h>
+#include <emscripten/posix_socket.h>
+
+static EMSCRIPTEN_WEBSOCKET_T bridgeSocket = 0;
+#endif
+
 namespace ix
 {
     bool initNetSystem()
@@ -20,6 +29,16 @@ namespace ix
         err = WSAStartup(wVersionRequested, &wsaData);
 
         return err == 0;
+#elif defined(__EMSCRIPTEN__)
+        bridgeSocket = emscripten_init_websocket_to_posix_socket_bridge("ws://localhost:1337");
+        // Synchronously wait until connection has been established.
+        uint16_t readyState = 0;
+        do {
+            emscripten_websocket_get_ready_state(bridgeSocket, &readyState);
+            emscripten_thread_sleep(100);
+        } while (readyState == 0);
+
+        return true;
 #else
         return true;
 #endif

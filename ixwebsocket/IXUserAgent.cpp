@@ -13,7 +13,9 @@
 #endif
 
 // Platform name
-#if defined(_WIN32)
+#if defined(__EMSCRIPTEN__)
+#define PLATFORM_NAME "emscripten"
+#elif defined(_WIN32)
 #define PLATFORM_NAME "windows" // Windows
 #elif defined(_WIN64)
 #define PLATFORM_NAME "windows" // Windows
