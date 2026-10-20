@@ -466,7 +466,7 @@ namespace ix
             data.payload = decompressedPayload;
 #else
             std::string errorMsg("ixwebsocket was not compiled with gzip support on");
-            return std::make_shared<HttpResponse>(code,
+            return std::make_shared<HttpResponse>(data.code,
                                                   data.description,
                                                   HttpErrorCode::Gzip,
                                                   data.headers,
