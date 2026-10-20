@@ -726,7 +726,7 @@ namespace ix
          // Make a cancellation object dealing with connection timeout
          _requestInitCancellation = true;
          _isCancellationRequested =
-             makeCancellationRequestWithTimeout(0, _requestInitCancellation); 
+             makeCancellationRequestWithTimeout(1, _requestInitCancellation); 
      }
 
     HttpResponsePtr HttpClient::get(const std::string& url, HttpRequestArgsPtr args)
