@@ -6,6 +6,7 @@
 
 #pragma once
 
+#include <functional>
 #include <string>
 
 namespace ix
@@ -38,6 +39,15 @@ namespace ix
 
         // whether tls is enabled, used for server code
         bool tls = false;
+
+        // OpenSSL only: configures the client identity (certificate + externally held key)
+        // on the SSL_CTX (passed as void*); return false and set errMsg to abort the connection
+        std::function<bool(void* sslCtx, std::string& errMsg)> clientIdentityHook;
+
+        bool hasClientIdentityHook() const
+        {
+            return static_cast<bool>(clientIdentityHook);
+        }
 
         bool hasCertAndKey() const;
         bool hasCertAndKeyString() const;

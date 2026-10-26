@@ -461,6 +461,15 @@ namespace ix
     bool SocketOpenSSL::handleTLSOptions(std::string& errMsg)
     {
         ERR_clear_error();
+        if (_tlsOptions.hasClientIdentityHook())
+        {
+            if (!_tlsOptions.clientIdentityHook(_ssl_context, errMsg))
+            {
+                return false;
+            }
+        }
+
+        ERR_clear_error();
         if (_tlsOptions.hasCertAndKey())
         {
             if (SSL_CTX_use_certificate_chain_file(_ssl_context, _tlsOptions.certFile.c_str()) != 1)
